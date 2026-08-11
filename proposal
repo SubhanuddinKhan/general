@@ -1,0 +1,134 @@
+PhD Research Proposal
+Trustworthy Medical Foundation Models under Acquisition Shift: Calibration, Evidence Grounding and Selective Prediction
+Subhan Uddin
+Applicant, Doctor of Philosophy (PhD) · School of Computer Science and Engineering, UNSW Sydney
+Proposed supervisor: Professor Arcot Sowmya · Proposed co-supervisor: Dr Tahereh Hassanzadeh
+Primary imaging modality: Computed Tomography (CT)
+Primary clinical task: Pancreatic tumour detection in contrast-enhanced CT (label: tumour‑present vs tumour‑absent)
+
+1. Overview
+Medical foundation models are increasingly used as general-purpose encoders for radiological images, on the implicit assumption that large-scale pretraining confers robustness to the variation seen in routine practice. Recent evidence from an adjacent modality questions this assumption: a January 2026 evaluation of fourteen pathology foundation models found that none was invariant to scanner-induced shift, and that robustness did not follow from model size, training scale or recency [1]. Whether the same holds for CT foundation models is not yet established, and is the empirical question this project opens with rather than assumes. The concern is well-motivated for CT on first principles — as set out in Section 2, a CT image is the output of an acquisition process that systematically alters the signal — but it must be demonstrated, not inferred from pathology. The consequences of such failure, where it occurs, are most serious not for accuracy but for reliability: under acquisition and institutional shift, embeddings drift, predicted probabilities become miscalibrated, and a model can be confidently wrong at a hospital it was never validated on — while standard discrimination metrics such as AUC appear stable and conceal the problem.
+This project asks how to make medical foundation models trustworthy under acquisition shift, using computed tomography (CT) as the primary modality and pancreatic lesion detection as the primary clinical task. The binary label — tumour-present (n = 1,077) vs tumour-absent (n = 8,824) — is taken directly from the PanTSMini metadata.xlsx (tumor? column, zero missing values). Pancreatic ductal adenocarcinoma is the dominant tumour type in this dataset, but the label is not restricted to PDAC; the task is pancreatic tumour detection. The early-detection clinical rationale remains: stage at diagnosis governs survival, early lesions are small and low-contrast, and the multi-centre public datasets (PanTSMini, PANORAMA) provide the ground-truth labels across diverse sites. Full DICOM-header shift axes — convolution kernel, tube voltage (kVp) — are not available in either NIfTI dataset; these will be sourced from the Imaging Data Commons (IDC), subject to verification of a task-relevant subset. The project treats calibration, evidence grounding and selective prediction as three facets of one problem: a deployed model should produce reliable probabilities at an unseen site, should ground its outputs in image evidence, and should decline to assert what it cannot support.
+
+Figure 1. The four objectives form a single dependency chain. Acquisition shift is characterised at the encoder (Obj 1), drift is reduced while clinical signal is preserved (Obj 2), reliability is restored at unseen sites without labels (Obj 3), and calibrated uncertainty governs assertion-level abstention in report generation (Obj 4).
+The proposal builds directly on my prior research. My published work addresses detection of small, low-contrast targets under degraded imaging and unpaired-data adaptation across imaging conditions [9,10], and my current research is on source-free test-time adaptation — the exact machinery Objective 3 requires. The move here is from natural-image degradation to clinically defined acquisition shift, and from accuracy to calibrated reliability.
+2. Research Problem and Significance
+2.1 The problem
+A CT scan is not a fixed measurement of anatomy; it is the output of an acquisition process governed by scanner manufacturer, reconstruction (convolution) kernel, slice thickness, tube voltage (kVp), pixel spacing and contrast phase. These parameters vary within a hospital and far more across hospitals, and they systematically alter the image — and therefore the representation a foundation model extracts from it. When the encoder’s representation drifts with acquisition rather than with anatomy or pathology, three failures follow: discrimination may degrade; calibration almost always degrades, so predicted probabilities no longer mean what they claim; and any downstream component consuming the embedding, including a report generator, inherits the error.
+The core difficulty is that these failures are hidden by conventional evaluation. A model can retain a strong AUC at a new site while its probability estimates become unreliable, because ranking is preserved even as calibration breaks. Reliability, not ranking, is what clinical use depends on.
+2.2 Significance
+Clinically, acquisition robustness is a recognised barrier to translation: a model validated at one institution frequently underperforms, or misleads, at another. A system that silently becomes overconfident at a new hospital is more dangerous than one that abstains. For pancreatic cancer specifically, stage at diagnosis is the dominant determinant of survival; even modest gains in reliable early detection on routinely acquired CT carry disproportionate clinical value. Methodologically, the project reframes foundation-model evaluation around calibration and reliability under clinically defined shift, and provides mechanisms — targeted drift reduction, source-free recalibration, selective prediction, evidence-grounded abstention — that make deployment at unseen sites defensible. Because acquisition metadata is recorded in DICOM headers, shift can be defined precisely and reproducibly rather than assumed.
+3. Research Gap and Questions
+Four gaps in the current literature motivate this project. The research questions that follow address them in turn.
+⦁	Evidence of foundation-model fragility under acquisition shift exists for pathology [1] but has not been established for CT, where the acquisition factors and their imaging effects are different. The CT case is assumed rather than tested.
+⦁	Robustness work is overwhelmingly evaluated through discrimination metrics such as AUC, which can remain stable while calibration and uncertainty silently degrade. Reliability under shift is under-measured relative to accuracy.
+⦁	Drift-reduction and harmonisation methods often reduce shift sensitivity without a guarantee that clinically meaningful signal is preserved. The trade-off between acquisition invariance and diagnostic signal is rarely quantified.
+⦁	Source-free recalibration and selective prediction are studied separately and for closed-set classification; they are rarely combined or connected to the reliability of a downstream generation task that consumes the embedding. The deployment-to-application reliability chain is fragmented.
+The project therefore asks:
+1)	RQ1. How do scanner manufacturer, reconstruction kernel, slice thickness, tube voltage and contrast phase affect the embedding stability, calibration and uncertainty of CT foundation models on the pancreatic lesion detection task, and are these effects visible where discrimination metrics are not?
+2)	RQ2. Can acquisition-related representation drift be reduced, using metadata as conditioning signal, while preserving clinically meaningful variation?
+3)	RQ3. Can a deployed model be recalibrated at an unseen site without labels (source-free), and can selective prediction reliably identify inputs where it should abstain?
+4)	RQ4. Does propagating calibrated uncertainty into report generation allow assertion-level abstention that reduces unsupported findings relative to a standard baseline?
+4. Objectives and Methodology
+The thesis is organised around four connected objectives. Each addresses one research question and is intended to yield a publishable contribution; each later objective depends on the one before it.
+Objective 1 — Characterise embedding stability, calibration and uncertainty under acquisition shift
+Three CT foundation models with publicly available weights are selected to span deliberately different pretraining paradigms, enabling comparison of how training objective shapes calibration under shift: CT-FM (ViT-B, self-supervised masked autoencoding on ≈148k volumes — general-purpose 3D CT representation) [2]; CT-CLIP (ViT-based encoder, trained with language supervision on 25k CT–report pairs — vision–language representation) [8]; and VISTA3D (transformer-based interactive segmentation model — included as a segmentation-oriented representation baseline to test whether task-specific pretraining affects calibration stability differently from general-purpose pretraining) [11]. These three are not equivalent or directly comparable models; they are chosen to answer the question of whether pretraining paradigm moderates the acquisition-shift calibration problem, using the pancreatic tumour detection task as the shared evaluation. The selection will be revisited at confirmation of candidature if more suitable alternatives emerge. Shift axes are defined from PanTSMini metadata (manufacturer, CT phase, spacing) and from IDC DICOM headers (convolution kernel, kVp), subject to verification of a task-relevant IDC subset. Methods: embedding-stability analysis under matched-anatomy, varied-acquisition conditions; calibration measured by expected calibration error (ECE) and reliability diagrams; uncertainty quantified and tested for whether it rises appropriately under shift. The clinical task uses the binary tumour? label from PanTSMini metadata.xlsx (tumour-present: n = 1,077; tumour-absent: n = 8,824; 0 missing), with contrast-enhanced scans (n = 5,415) as the primary subset. Deliverable: a reproducible reliability-benchmarking protocol and calibration results across the three models.
+Objective 2 — Reduce acquisition-related representation drift while preserving clinical signal
+The research question for this objective is: can conditioning a lightweight normalisation layer on available acquisition metadata (manufacturer, CT phase, spacing) reduce representation drift in CT foundation models, while preserving tumour-discriminative information? I will develop acquisition-metadata-conditioned feature normalisation (AMCN): a lightweight conditioning layer inserted between frozen pretrained blocks that takes available acquisition metadata as explicit inputs and produces adaptive normalisation statistics (scale and shift) for intermediate feature maps, analogous to adaptive instance normalisation (AdaIN) but conditioned on clinical metadata rather than a style image. The backbone weights are frozen; only the AMCN parameters are trained. This approach will be compared against standard baselines: z-score normalisation, Nyul histogram normalisation, and no normalisation. An important practical constraint: manufacturer and model are available for only 45% of PanTSMini cases (4,446 and 4,347 of 9,901 respectively). This limits AMCN conditioning to the available subset and means the approach must remain effective when metadata is partially missing — a realistic deployment scenario that will be explicitly evaluated. CT phase (available for 9,900 / 9,901 cases) and spacing (9,901 / 9,901) are used as the primary conditioning signals; manufacturer supplements them where available. Evaluation: ECE and embedding cosine similarity across manufacturer and phase strata, before and after AMCN; AUC on the pancreatic tumour detection task as a guard metric confirming clinical signal is retained; ablation isolating the contribution of each metadata field.
+Objective 3 — Source-free recalibration and selective prediction at unseen sites
+The research question for this objective is: can a lightweight calibration head, updated online from unlabelled target-site data without access to the backbone or source labels, produce reliable predicted probabilities at an unseen site? I will develop and test entropy-minimised temperature scaling (EMTS) as a hypothesis-driven approach: freeze the pretrained backbone and any AMCN layer entirely; maintain a small site-specific calibration head (a learnable temperature parameter plus a bias term); update it online from unlabelled target-site data by minimising prediction entropy, with exponential moving average smoothing. Three important caveats are built into the evaluation. First, lower entropy does not automatically mean better calibration — a model that becomes overconfident produces low entropy but is poorly calibrated. The evaluation therefore measures ECE directly rather than using entropy as a proxy for calibration quality. Second, the calibration head has minimal parameters, which reduces but does not eliminate the risk of miscalibration under severe shift; if EMTS proves insufficient, this is a result in itself and motivates stronger methods. Third, target-site labels are not used during adaptation; they are held out entirely and used only for final evaluation, ensuring the source-free claim is honest. Selective prediction is implemented as a threshold on post-calibration confidence, estimated from unlabelled data via a held-out entropy bound. Evaluation: ECE and reliability diagrams at unseen PanTSMini sites; risk–coverage curves for selective prediction; stability across sequential sites; comparison against temperature scaling without entropy minimisation as a baseline.
+Objective 4 — Evidence-grounded report generation with assertion-level abstention (optional downstream application)
+Objective 4 is an optional downstream application contingent on Objectives 1–3 being sufficient for a complete thesis. It is not a separate foundation-model or report-generation research programme; its role is to demonstrate that the calibration and selective-prediction machinery has consequences for a real clinical output. If scope permits, I will investigate how reliability problems from Objectives 1–3 influence CT report generation, and design a generator that abstains from an assertion when the image encoder’s calibrated confidence for the relevant image region falls below the threshold from Objective 3. Using CT-RATE (25,692 CT volumes with paired radiology reports), I will evaluate factual grounding and rate of unsupported findings relative to a standard generation baseline — not surface text-similarity. The thesis retains full value if this objective is de-scoped.
+Scope note. The modality-reliance question is included as one analysis within Objective 1 rather than a separate component. The agentic-reasoning direction is excluded. No broad multimodal decision-making claims are made that the selected CT datasets would not directly support. The programme commits to a single primary modality (CT) and a single primary clinical task (pancreatic lesion detection) throughout.
+5. Data, Acquisition Shift Definition and Feasibility
+Table 1 below summarises dataset feasibility against the specific fields Dr Hassanzadeh requested: raw DICOM metadata, site information, acquisition parameters, labels and reports. Fields marked † require verification against the dataset’s current release page before submission, as indicated.
+
+Table 1. Dataset feasibility — verified counts from direct access.
+Dataset	Primary role	Labels (n)	CT phase (n)	Vendor / model	Spacing / Reports	Full DICOM	Main limitation
+PanTSMini
+(public subset
+of PanTS)	Primary clinical benchmark; manufacturer and phase shift analysis	9,901 total
+tumour+: 1,077
+tumour−: 8,824
+0 missing	CE: 5,415
+(venous 2,897;
+arterial 2,450;
+delay 68)
+Non-CE: 4,485
+1 missing	Manufacturer:
+4,446 / 9,901
+(45% available)
+Model:
+4,347 / 9,901
+(44%)	Spacing: 9,901
+Reports: 9,900
+(structured
+systematic
+format)	✕ No
+(NIfTI +
+metadata.xlsx;
+no kernel,
+no kVp)	~55% missing manufacturer/model; no kernel/kVp; 45% non-CE scans included
+PANORAMA	Multi-centre CE benchmark; cross-site tumour evaluation	Binary tumour
+label +
+segmentation	CE only
+(all cases)	Not in
+NIfTI files	Spacing: Yes
+Reports: No	✕ No
+(NIfTI .nii.gz;
+no kernel,
+no kVp)	No DICOM headers; no manufacturer, kernel or kVp; ~194 GB download
+IDC	DICOM-rich acquisition analysis; kernel/kVp characterisation	To verify
+(task-relevant
+subset needed)	To verify	To verify	To verify	✓ Yes
+(full headers:
+kernel, kVp,
+mfr, spacing)	Must identify and verify a pancreatic-task-relevant CT subset before use
+CT-RATE	Optional: downstream report generation (Obj 4 only)	18 abnorm.
+labels	Chest CT
+(different
+anatomy)	Partial
+(recon. meta)	Spacing: Yes
+Reports:
+25k+ (clinical
+prose)	✕ No
+(volume +
+recon. meta)	Different anatomy; limited site diversity (Turkish consortium)
+AbdomenCT-1K
+/ AMOS	Cross-task generalisation; multi-organ segmentation	Organ
+segmentation
+(no tumour
+labels)	Mixed	Not in
+NIfTI files	Spacing: Yes
+Reports: No	✕ No
+(NIfTI only)	No pancreatic tumour labels; limited acquisition metadata
+
+Dataset access verified. PANORAMA: open on Zenodo and Grand Challenge (~194 GB, NIfTI format); no raw DICOM headers; acquisition parameters limited to NIfTI spacing and matrix dimensions (no convolution kernel, no kVp). PanTSMini: openly available on HuggingFace (BodyMaps/PanTSMini, no login required); metadata.xlsx confirmed to contain manufacturer (GE, Philips, Siemens, Toshiba), manufacturer model, CT phase (arterial/venous/non-contrast), spacing, binary tumour label, and structured radiology reports (~all cases). Convolution kernel and kVp are not available in either dataset; these shift axes are sourced from IDC.
+PanTSMini provides the primary clinical benchmark with consistently available CT phase (9,900/9,901), voxel spacing (9,901/9,901), tumour labels (9,901/9,901) and structured reports (9,900/9,901), together with manufacturer and model metadata for approximately 45% of cases. PANORAMA provides a complementary multi-centre European benchmark with binary tumour labels and segmentation masks across contrast-enhanced scans. Together these cover the primary shift axes of CT phase, voxel spacing, site, and — for the available subset — manufacturer. A DICOM-rich dataset (IDC) will be used separately to investigate additional acquisition variables such as convolution kernel and tube voltage (kVp), subject to verification of a task-relevant subset with appropriate labels and confirmed access. AbdomenCT-1K and AMOS serve as cross-task generalisation datasets. CT-RATE and the PanTSMini structured reports are both considered for Objective 4, noting that PanTSMini reports follow a systematic structured format whose suitability for generation research will be assessed against CT-RATE’s clinical prose.
+Shift is defined from the following DICOM-derived variables, available in IDC collections (which retain full DICOM headers): scanner manufacturer (0008,0070), convolution kernel (0018,1210), slice thickness (0050,0018), tube voltage kVp (0018,0060), pixel spacing (0028,0030), and contrast phase (from series description or clinical metadata). PANORAMA and PanTSMini provide NIfTI spacing and contrast-phase metadata respectively, serving as partial proxies. Combining IDC-defined shift axes with PANORAMA/PanTSMini clinical benchmarks gives concrete, reproducible experimental variables rather than an abstract notion of ‘domain’. All work with human-derived data will proceed under the relevant data-use agreements and UNSW Human Research Ethics Committee approval.
+6. Expected Contributions
+⦁	A reproducible reliability-benchmarking protocol for CT foundation models under metadata-defined acquisition shift, centred on ECE and embedding stability rather than accuracy alone.
+⦁	Acquisition-metadata-conditioned feature normalisation (AMCN): a lightweight, backbone-frozen method that reduces acquisition-driven drift while demonstrably preserving diagnostic signal.
+⦁	Entropy-minimised temperature scaling (EMTS): source-free, backbone-safe online recalibration at unseen sites, with selective prediction for label-free deployment.
+⦁	Evidence-grounded report generation with assertion-level abstention (Objective 4, contingent on scope).
+7. Indicative Three-Year Plan
+⦁	Year 1: Literature review; dataset access and credentialing (PANORAMA, PanTSMini — confirmed open on HuggingFace, IDC, CT-RATE); Objective 1 (reliability benchmarking of three CT foundation models on pancreatic lesion detection); confirmation of candidature; first submission.
+⦁	Year 2: Objective 2 (AMCN drift reduction) and Objective 3 (EMTS source-free recalibration and selective prediction); one to two submissions to strong venues (e.g. MICCAI, IPMI, Medical Image Analysis, IEEE TMI); mid-candidature review.
+⦁	Year 3: Objective 4 if in scope (evidence-grounded report generation); release of benchmark, code and protocols; thesis writing and final submissions.
+8. Risks and Mitigation
+⦁	PanTSMini covers the public subset only (9,901 scans) rather than the full 36,390-volume benchmark. The proprietary external sets (UCSF, Polish, Peking University, RSNA) are not publicly available. The public subset spans 145 centres in the metadata and is sufficient for institutional-shift analysis; access to full proprietary sets could be pursued via institutional collaboration in later candidature years if needed.
+⦁	AMCN does not reduce shift without suppressing signal. The guard metric in Objective 2 makes this detectable early. If AMCN underperforms, the evaluation contribution of Objective 1 is still complete and publishable.
+⦁	EMTS is insufficient for severe site shifts. The risk-coverage evaluation in Objective 3 surfaces this directly; abstention can widen to cover cases the calibration head cannot handle.
+⦁	Objective 4 scope. Explicitly optional. Thesis retains full value if de-scoped.
+References
+1)	N. Thiringer et al., “Scanner-Induced Domain Shifts Undermine the Robustness of Pathology Foundation Models,” arXiv:2601.04163, 2026.
+2)	S. Pai et al., “Vision Foundation Models for Computed Tomography (CT-FM),” arXiv:2501.09001, 2025.
+3)	L. Blankemeier et al., “Merlin: A Computed Tomography Vision–Language Foundation Model and Dataset,” Nature, 2026 (arXiv:2406.06512).
+4)	PANORAMA Challenge / N. Alves et al., “Pancreatic cancer diagnosis: multi-centre CT dataset and benchmark,” Grand Challenge / Zenodo, 2024.
+5)	W. Li et al., “PanTS: The Pancreatic Tumor Segmentation Dataset,” arXiv:2507.01291, 2025.
+6)	Y. Ji et al., “AMOS: A Large-Scale Abdominal Multi-Organ Benchmark for Versatile Medical Image Segmentation,” NeurIPS Datasets and Benchmarks, 2022.
+7)	D. Wang et al., “Tent: Fully Test-Time Adaptation by Entropy Minimization,” Proc. ICLR, 2021.
+8)	I. E. Hamamci et al., “Developing Generalist Foundation Models from a Multimodal Dataset for 3D Computed Tomography (CT-RATE / CT-CLIP),” arXiv:2403.17834, 2024.
+9)	S. Uddin and R. Yunbo, “Improved RT-DETR Method for Low-Light Underwater Pipeline Detection,” ICCWAMTIP, IEEE, 2025.
+10)	S. Uddin, B. Hussain and S. Fareed, “Real-World Adaptation of Retinexformer for Low-Light Image Enhancement Using Unpaired Data,” Int. J. Ethical AI Application, 2025.
+11)	S. D. Murthy et al., “VISTA3D: A Unified Segmentation Foundation Model for 3D Medical Imaging,” arXiv:2406.05285, 2024.
